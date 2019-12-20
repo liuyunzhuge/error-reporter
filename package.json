@@ -1,0 +1,40 @@
+{
+  "name": "event-reporter",
+  "version": "0.1.0",
+  "description": "A simple library that helps to report error details based on `window.onerror` and integrates with vConsole. ",
+  "main": "dist/index.cjs.js",
+  "module": "dist/index.esm.js",
+  "browser": "dist/index.umd.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/liuyunzhuge/event-reporter"
+  },
+  "keywords": [
+    "event-reporter"
+  ],
+  "author": "liuyunzhuge",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/liuyunzhuge/event-reporter/issues"
+  },
+  "homepage": "https://github.com/liuyunzhuge/event-reporter#readme",
+  "devDependencies": {
+    "@babel/cli": "^7.7.4",
+    "@babel/core": "^7.7.4",
+    "@babel/plugin-external-helpers": "^7.7.4",
+    "@babel/plugin-proposal-class-properties": "^7.7.4",
+    "@babel/plugin-transform-runtime": "^7.7.4",
+    "@babel/preset-env": "^7.7.4",
+    "rollup": "^1.27.8",
+    "rollup-plugin-babel": "^4.3.3",
+    "rollup-plugin-commonjs": "^10.1.0",
+    "rollup-plugin-node-resolve": "^5.2.0",
+    "rollup-plugin-uglify": "^6.0.3"
+  },
+  "scripts": {
+    "compile": "rollup -c"
+  },
+  "dependencies": {
+    "@babel/runtime": "^7.7.4"
+  }
+}
