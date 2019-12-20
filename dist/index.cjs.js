@@ -7,10 +7,10 @@ function isOBJByType(o, type) {
 }
 
 function processStackMsg(error) {
-  var stack = error.stack.replace(/\n/gi, '') // replace line separator
+  var stack = error.stack.replace(/\n/gi, '') // clean line separator
   .split(/\bat\b/) // replace 'at' with '@' in error source like 'at window.makeError (http://localhost:8080/test.js?a=1&b=2:3:5)'
   .slice(0, config.maximumStackLines) // limit maximum stack lines
-  .join('@').replace(/\?[^:]+/gi, ''); // clear query string in error source like 'http://localhost:8080/test.js?a=1&b=2'
+  .join('@').replace(/\?[^:]+/gi, ''); // clean query string in error source like 'http://localhost:8080/test.js?a=1&b=2'
 
   var msg = error.toString();
 
@@ -56,11 +56,9 @@ function addProxyToConsole() {
 }
 
 function showVConsole() {
-  if (vConsole) {
-    try {
-      vConsole.show();
-    } catch (e) {}
-  }
+  try {
+    vConsole && vConsole.show();
+  } catch (e) {}
 }
 
 function enableVConsole(show) {
@@ -86,7 +84,7 @@ function enableVConsole(show) {
     var len = logCache.length;
 
     for (var i = 0; i < len; i++) {
-      // console[item.logType].apply(console, item.logs) // this will make cached logs printed twice in the browser console panel
+      // console[item.logType].apply(console, item.logs) // if use this, will make cached logs printed twice in the browser console panel
       // make cached logs printed only in the vConsolePanel
       // based on `noOrigin` property of vConsole log entry
       logCache[i].noOrigin = true;
@@ -114,6 +112,7 @@ window.onerror = function (message, source, lineno, colno, error) {
   if (error && error.stack) {
     newMessage = processStackMsg(error);
   } // there is a doubt: could this happen?
+  // could `message` be a instance of `Event`?
 
 
   if (isOBJByType(newMessage, 'Event')) {
