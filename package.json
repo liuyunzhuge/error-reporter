@@ -1,5 +1,5 @@
 {
-  "name": "event-reporter",
+  "name": "breif-event-reporter",
   "version": "0.1.0",
   "description": "A simple library that helps to report error details based on `window.onerror` and integrates with vConsole. ",
   "main": "dist/index.cjs.js",
