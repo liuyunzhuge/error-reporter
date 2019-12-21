@@ -91,3 +91,22 @@ window.onerror = function(msg, url, line, col, error) {
 如果想收集不同域的脚本报出的完整错误信息，必须做到两点：
 * script标签添加`crossorigin`属性，如`<script crossorigin>`
 * 脚本域名必须做CORS的处理，将`Access-Control-Allow-Origin`这个http header配置好
+
+## v0.1.3新增
+* `getSystemInfo`和`getCookie`两个方法，方便在上报时利用它们收集客户端相关信息
+```js
+let systemInfo = ErrorReporter.getSystemInfo()
+/**
+ * {
+    system: "iPhone"
+    systemVersion: "iOS11.0"
+    netType: "Unknown"
+    ua: "Mozilla/5.0 (iPhone; CPU iPhone OS 11_0 like Mac OS X) AppleWebKit/604.1.38 ..."
+    wechat: false
+    wechatVersion: ""
+    wechatMini: false
+ * }
+ */
+
+ErrorReporter.getCookie('someCookieName')
+```
