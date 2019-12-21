@@ -103,10 +103,10 @@ function getSystemInfo() {
   var systemVersion = '';
 
   if (android) {
-    system = 'Android ';
+    system = 'Android';
     systemVersion = android[2];
   } else if (iphone) {
-    system = 'iPhone ';
+    system = 'iPhone';
     systemVersion = 'iOS' + iphone[2].replace(/_/g, '.');
   } else if (ipad) {
     system = 'iPad';
