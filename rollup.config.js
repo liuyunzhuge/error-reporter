@@ -65,7 +65,7 @@ export default [
     }),
     createConfig({
         output: {
-            file: pkg.browser,
+            file: 'dist/index.umd.js',
             format: 'umd'
         },
         min: true

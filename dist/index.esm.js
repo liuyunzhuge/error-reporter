@@ -1,5 +1,4 @@
-function noop() {}
-
+/* eslint-disable no-useless-escape */
 function isOBJByType(o, type) {
   return Object.prototype.toString.call(o) === '[object ' + (type || 'Object') + ']';
 }
@@ -93,11 +92,76 @@ function enableVConsole(show) {
   });
 }
 
+function getSystemInfo() {
+  var ua = navigator.userAgent; // device & system
+
+  var ipod = ua.match(/(ipod).*\s([\d_]+)/i);
+  var ipad = ua.match(/(ipad).*\s([\d_]+)/i);
+  var iphone = ua.match(/(iphone)\sos\s([\d_]+)/i);
+  var android = ua.match(/(android)\s([\d\.]+)/i);
+  var system = 'Unknown';
+  var systemVersion = '';
+
+  if (android) {
+    system = 'Android ';
+    systemVersion = android[2];
+  } else if (iphone) {
+    system = 'iPhone ';
+    systemVersion = 'iOS' + iphone[2].replace(/_/g, '.');
+  } else if (ipad) {
+    system = 'iPad';
+    systemVersion = 'iOS' + ipad[2].replace(/_/g, '.');
+  } else if (ipod) {
+    system = 'iPod';
+    systemVersion = 'iOS' + ipod[2].replace(/_/g, '.');
+  } // wechat client version
+
+
+  var microMessenger = ua.match(/MicroMessenger\/([\d\.]+)/i);
+  var wechat = false;
+  var wechatVersion = '';
+  var wechatMini = false;
+
+  if (microMessenger && microMessenger[1]) {
+    wechat = true;
+    wechatVersion = microMessenger[1];
+
+    if (window.__wxjs_environment === 'miniprogram' || /miniProgram/i.test(ua)) {
+      wechatMini = true;
+    }
+  } // network type
+
+
+  var network = ua.toLowerCase().match(/ nettype\/([^ ]+)/g);
+  var netType = 'Unknown';
+
+  if (network && network[0]) {
+    network = network[0].split('/');
+    netType = network[1];
+  }
+
+  return {
+    system: system,
+    systemVersion: systemVersion,
+    netType: netType,
+    ua: ua,
+    wechat: wechat,
+    wechatVersion: wechatVersion,
+    wechatMini: wechatMini
+  };
+}
+
+function getCookie(name) {
+  var sName = encodeURIComponent(name).replace(/[-.+*]/g, '\\$&');
+  var regExp = new RegExp("(?:(?:^|.*;)\\s*".concat(sName, "\\s*\\=\\s*([^;]*).*$)|^.*$"));
+  return decodeURIComponent(document.cookie.replace(regExp, '$1')) || null;
+}
+
 addProxyToConsole();
 var config = {
   vConsoleSrc: '//cdn.bootcss.com/vConsole/3.3.4/vconsole.min.js',
   maximumStackLines: 20,
-  onReport: noop
+  onReport: function onReport() {}
 };
 var vConsole = null; // VConsole instance
 
@@ -124,18 +188,22 @@ window.onerror = function (message, source, lineno, colno, error) {
     // you can use `crossorigin attribute on <script> tag` and `cors for script file` to make error details available
     console.error('Script Error: See Browser Console for Detail');
   } else {
-    config.onReport(newMessage);
+    config.onReport.call(ErrorReport, newMessage);
   }
 
   return false;
 };
 
-var index = {
-  setConfig: function setConfig(settings) {
-    Object.assign(config, settings);
-  },
+function setConfig(settings) {
+  Object.assign(config, settings);
+}
+
+var ErrorReport = {
+  setConfig: setConfig,
   enableVConsole: enableVConsole,
-  loadScript: loadScript
+  loadScript: loadScript,
+  getSystemInfo: getSystemInfo,
+  getCookie: getCookie
 };
 
-export default index;
+export default ErrorReport;
