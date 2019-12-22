@@ -6,10 +6,14 @@ function isOBJByType(o, type) {
 }
 
 function processStackMsg(error) {
-  var stack = error.stack.replace(/\n/gi, '') // clean line separator
-  .split(/\bat\b/) // replace 'at' with '@' in error source like 'at window.makeError (http://localhost:8080/test.js?a=1&b=2:3:5)'
-  .slice(0, config.maximumStackLines) // limit maximum stack lines
-  .join('@').replace(/\?[^:]+/gi, ''); // clean query string in error source like 'http://localhost:8080/test.js?a=1&b=2'
+  // 1. clean line separator
+  // 2. replace 'at' with '@' in error source like 'at window.makeError (http://localhost:8080/test.js?a=1&b=2:3:5)'
+  // 3. limit maximum stack lines
+  // 4. clean query string in error source like 'http://localhost:8080/test.js?a=1&b=2'
+  var stack = error.stack.replace(/\n/gi, '') // 1
+  .split(/\bat\b/) // 2
+  .slice(0, config.maximumStackLines) // 3
+  .join('@').replace(/\?[^:]+/gi, ''); // 4
 
   var msg = error.toString();
 
@@ -28,7 +32,6 @@ function loadScript(src, callback) {
   s.src = src;
 
   s.onload = s.onreadystatechange = function () {
-    // console.log(this.readyState) // uncomment this line to see which ready states are called.
     if (!r && (!this.readyState || this.readyState === 'complete')) {
       r = true;
       isOBJByType(callback, 'Function') && callback();
@@ -159,54 +162,77 @@ function getCookie(name) {
   return decodeURIComponent(document.cookie.replace(regExp, '$1')) || null;
 }
 
-addProxyToConsole();
+function checkRuntimeReport() {
+  // 1. using window.onerror to collect javascript runtime error
+  // https://developer.mozilla.org/zh-CN/docs/Web/API/GlobalEventHandlers/onerror
+  var oldOnerror = window.onerror;
+
+  window.onerror = function (message, source, lineno, colno, error) {
+    var newMessage = message;
+
+    if (error && error.stack) {
+      newMessage = config.processStack(error);
+    }
+
+    if (message.toLowerCase().indexOf('script error') > -1) {
+      // this is caused by scripts of different origin
+      // the details of the error are not reported to prevent leaking information
+      // more details can be shown in https://developer.mozilla.org/zh-CN/docs/Web/API/GlobalEventHandlers/onerror
+      // you can use `crossorigin attribute on <script> tag` and `cors for script file` to make error details available
+      console.error('Script Error: See Browser Console for Detail');
+    } else {
+      config.onReport.call(ErrorReporter, newMessage);
+    }
+
+    return isOBJByType(oldOnerror, 'Function') ? oldOnerror.apply(this, [message, source, lineno, colno, error]) : false;
+  };
+}
+
+function checkResourceReport() {
+  // 2. use capture phase of window `error` event to collect resource loading errors
+  // `error` event does not bubble, so `window.onerror` cannot known resource loading errors
+  // but you can catch such errors using the capture phase of `error` event
+  config.resource && window.addEventListener('error', function (event) {
+    if (isOBJByType(event, 'Event') && (event.target instanceof HTMLScriptElement || event.target instanceof HTMLLinkElement || event.target instanceof HTMLImageElement)) {
+      var message = event.type ? '--' + event.type + '--' + (event.target ? event.target.tagName.toLowerCase() + '::' + event.target.src : '') : '';
+      config.onReport.call(ErrorReporter, message);
+    }
+  }, true);
+}
+
+function checkFrameWorksReport() {
+  // 3. handle errors for `vue`
+  if (config.vue) {
+    var oldVueErrorHandler = config.vue.config.errorHandler;
+
+    config.vue.config.errorHandler = function (err, vm, info) {
+      console.error(err);
+      config.onReport.call(ErrorReporter, config.processStack(err));
+      return isOBJByType(oldVueErrorHandler, 'Function') && oldVueErrorHandler(err, vm, info);
+    };
+  }
+}
+
+function setConfig(settings) {
+  Object.assign(config, settings);
+  checkRuntimeReport();
+  checkResourceReport();
+  checkFrameWorksReport();
+}
+
 var config = {
   vConsoleSrc: '//cdn.bootcss.com/vConsole/3.3.4/vconsole.min.js',
   maximumStackLines: 20,
+  resource: true,
+  vue: null,
+  // can be set to `Vue` class from outside
+  processStack: processStackMsg,
   onReport: function onReport() {}
 };
 var vConsole = null; // VConsole instance
 
 var logCache = [];
-var cacheEnabled = true; // 1. using window.onerror to collect javascript runtime error
-// https://developer.mozilla.org/zh-CN/docs/Web/API/GlobalEventHandlers/onerror
-
-var oldOnerror = window.onerror;
-
-window.onerror = function (message, source, lineno, colno, error) {
-  var newMessage = message;
-
-  if (error && error.stack) {
-    newMessage = processStackMsg(error);
-  }
-
-  if (message.toLowerCase().indexOf('script error') > -1) {
-    // this is caused by scripts of different origin
-    // the details of the error are not reported to prevent leaking information
-    // more details can be shown in https://developer.mozilla.org/zh-CN/docs/Web/API/GlobalEventHandlers/onerror
-    // you can use `crossorigin attribute on <script> tag` and `cors for script file` to make error details available
-    console.error('Script Error: See Browser Console for Detail');
-  } else {
-    config.onReport.call(ErrorReporter, newMessage);
-  }
-
-  return isOBJByType(oldOnerror, 'Function') ? oldOnerror.apply(this, [message, source, lineno, colno, error]) : false;
-}; // 2. use capture phase of window `error` event to collect resource loading errors
-// `error` event does not bubble, so `window.onerror` cannot known resource loading errors
-// but you can catch such errors using the capture phase of `error` event
-
-
-window.addEventListener('error', function (event) {
-  if (isOBJByType(event, 'Event') && (event.target instanceof HTMLScriptElement || event.target instanceof HTMLLinkElement || event.target instanceof HTMLImageElement)) {
-    var message = event.type ? '--' + event.type + '--' + (event.target ? event.target.tagName.toLowerCase() + '::' + event.target.src : '') : '';
-    config.onReport.call(ErrorReporter, message);
-  }
-}, true);
-
-function setConfig(settings) {
-  Object.assign(config, settings);
-}
-
+var cacheEnabled = true;
 var ErrorReporter = {
   setConfig: setConfig,
   enableVConsole: enableVConsole,
@@ -214,5 +240,6 @@ var ErrorReporter = {
   getSystemInfo: getSystemInfo,
   getCookie: getCookie
 };
+addProxyToConsole();
 
 module.exports = ErrorReporter;

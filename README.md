@@ -161,3 +161,23 @@ window.addEventListener('error', function (event) {
 接下来的目标会针对以上几个`todo`一一解决。
 
 文章地址：[一篇文章教你如何捕获前端错误](https://mp.weixin.qq.com/s/E51lKQOojsvhHvACIyXwhw)
+
+## v0.1.5新增
+新增三个`config option`:
+```
+resource: @{Boolean, default: true} 是否开启对资源加载失败的捕获
+vue: @{Class, default: null} 外部可传入对Vue类的引用，来开启Vue框架的错误收集
+processStack: @{Function, default:[inner code]} `error-report`内部对错误的stack有解析处理，如果不想要或者是想更换处理方式，利用此回调即可
+```
+
+使用实例：
+```js
+import Vue from 'vue'
+import ErrorReporter from 'breif-error-reporter'
+
+ErrorReporter.setConfig({
+    resource: true,
+    vue: Vue,
+    processStack: err => err.stack
+})
+```
