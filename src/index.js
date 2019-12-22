@@ -164,20 +164,14 @@ let vConsole = null // VConsole instance
 let logCache = []
 let cacheEnabled = true
 
+// 1. using window.onerror to collect javascript runtime error
 // https://developer.mozilla.org/zh-CN/docs/Web/API/GlobalEventHandlers/onerror
+let oldOnerror = window.onerror
 window.onerror = function (message, source, lineno, colno, error) {
     let newMessage = message
 
     if (error && error.stack) {
         newMessage = processStackMsg(error)
-    }
-
-    // there is a doubt: could this happen?
-    // could `message` be a instance of `Event`?
-    if (isOBJByType(newMessage, 'Event')) {
-        newMessage += newMessage.type
-            ? ('--' + newMessage.type + '--' + (newMessage.target
-                ? (newMessage.target.tagName + '::' + newMessage.target.src) : '')) : ''
     }
 
     if (message.toLowerCase().indexOf('script error') > -1) {
@@ -187,16 +181,35 @@ window.onerror = function (message, source, lineno, colno, error) {
         // you can use `crossorigin attribute on <script> tag` and `cors for script file` to make error details available
         console.error('Script Error: See Browser Console for Detail')
     } else {
-        config.onReport.call(ErrorReport, newMessage)
+        config.onReport.call(ErrorReporter, newMessage)
     }
-    return false
+
+    return isOBJByType(oldOnerror, 'Function') ? oldOnerror.apply(this, [message, source, lineno, colno, error]) : false
 }
+
+// 2. use capture phase of window `error` event to collect resource loading errors
+// `error` event does not bubble, so `window.onerror` cannot known resource loading errors
+// but you can catch such errors using the capture phase of `error` event
+window.addEventListener('error', function (event) {
+    if (isOBJByType(event, 'Event') &&
+        (
+            event.target instanceof HTMLScriptElement ||
+            event.target instanceof HTMLLinkElement ||
+            event.target instanceof HTMLImageElement
+        )
+    ) {
+        let message = event.type
+            ? ('--' + event.type + '--' + (event.target
+                ? (event.target.tagName.toLowerCase() + '::' + event.target.src) : '')) : ''
+        config.onReport.call(ErrorReporter, message)
+    }
+}, true)
 
 function setConfig (settings) {
     Object.assign(config, settings)
 }
 
-let ErrorReport = {
+let ErrorReporter = {
     setConfig,
     enableVConsole,
     loadScript,
@@ -204,4 +217,4 @@ let ErrorReport = {
     getCookie
 }
 
-export { ErrorReport as default }
+export { ErrorReporter as default }
