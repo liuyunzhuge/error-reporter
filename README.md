@@ -181,3 +181,11 @@ ErrorReporter.setConfig({
     processStack: err => err.stack
 })
 ```
+
+## v0.1.6新增
+新增一个方法`makeReport`，使用举例：
+```js
+ErrorReporter.makeReport(new Error('自定义错误'))
+```
+
+利用这种故意触发的错误，可以用来监控客户端功能是否使用正常。

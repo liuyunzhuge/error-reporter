@@ -213,6 +213,10 @@ function checkFrameWorksReport () {
     }
 }
 
+function makeReport (err) {
+    config.onReport.call(ErrorReporter, config.processStack(err))
+}
+
 function setConfig (settings) {
     Object.assign(config, settings)
     checkRuntimeReport()
@@ -239,7 +243,8 @@ let ErrorReporter = {
     enableVConsole,
     loadScript,
     getSystemInfo,
-    getCookie
+    getCookie,
+    makeReport
 }
 
 addProxyToConsole()
