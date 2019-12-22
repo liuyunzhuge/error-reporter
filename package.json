@@ -1,6 +1,6 @@
 {
   "name": "breif-error-reporter",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A simple library that helps to report error details based on `window.onerror` and integrates with vConsole. ",
   "main": "dist/index.cjs.js",
   "module": "dist/index.esm.js",
