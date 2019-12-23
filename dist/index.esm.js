@@ -84,7 +84,8 @@ function enableVConsole(show) {
     var len = logCache.length;
 
     for (var i = 0; i < len; i++) {
-      // console[item.logType].apply(console, item.logs) // if use this, will make cached logs printed twice in the browser console panel
+      // if use this, will make cached logs printed twice in the browser console panel
+      // console[item.logType].apply(console, item.logs)
       // make cached logs printed only in the vConsolePanel
       // based on `noOrigin` property of vConsole log entry
       logCache[i].noOrigin = true;
@@ -158,11 +159,11 @@ function getCookie(name) {
   var sName = encodeURIComponent(name).replace(/[-.+*]/g, '\\$&');
   var regExp = new RegExp("(?:(?:^|.*;)\\s*".concat(sName, "\\s*\\=\\s*([^;]*).*$)|^.*$"));
   return decodeURIComponent(document.cookie.replace(regExp, '$1')) || null;
-}
+} // Feature 1. using window.onerror to collect javascript runtime error
+// https://developer.mozilla.org/zh-CN/docs/Web/API/GlobalEventHandlers/onerror
 
-function checkRuntimeReport() {
-  // 1. using window.onerror to collect javascript runtime error
-  // https://developer.mozilla.org/zh-CN/docs/Web/API/GlobalEventHandlers/onerror
+
+function tryRuntimeReport() {
   var oldOnerror = window.onerror;
 
   window.onerror = function (message, source, lineno, colno, error) {
@@ -179,44 +180,95 @@ function checkRuntimeReport() {
       // you can use `crossorigin attribute on <script> tag` and `cors for script file` to make error details available
       console.error('Script Error: See Browser Console for Detail');
     } else {
-      config.onReport.call(ErrorReporter, newMessage);
+      config.onReport.call(ErrorReporter, newMessage, REPORT_TYPE.RUNTIME);
     }
 
     return isOBJByType(oldOnerror, 'Function') ? oldOnerror.apply(this, [message, source, lineno, colno, error]) : false;
   };
-}
+} // Feature 2. use capture phase of window `error` event to collect resource loading errors
+// `error` event does not bubble, so `window.onerror` cannot known resource loading errors
+// but you can catch such errors using the capture phase of `error` event
 
-function checkResourceReport() {
-  // 2. use capture phase of window `error` event to collect resource loading errors
-  // `error` event does not bubble, so `window.onerror` cannot known resource loading errors
-  // but you can catch such errors using the capture phase of `error` event
+
+function tryResourceReport() {
   config.resource && window.addEventListener('error', function (event) {
-    if (isOBJByType(event, 'Event') && (event.target instanceof HTMLScriptElement || event.target instanceof HTMLLinkElement || event.target instanceof HTMLImageElement)) {
-      var message = event.type ? '--' + event.type + '--' + (event.target ? event.target.tagName.toLowerCase() + '::' + event.target.src : '') : '';
-      config.onReport.call(ErrorReporter, message);
+    if (event.target && (event.target instanceof HTMLScriptElement || event.target instanceof HTMLLinkElement || event.target instanceof HTMLImageElement)) {
+      var message = '--' + event.type + '--' + event.target.tagName.toLowerCase() + '::' + (event.target.src || event.target.href);
+      config.onResourceLoadError.call(ErrorReporter, event);
+      config.onReport.call(ErrorReporter, message, REPORT_TYPE.RESOURCE);
     }
   }, true);
-}
+} // Feature 3. handle errors for frameworks
 
-function checkFrameWorksReport() {
-  // 3. handle errors for `vue`
+
+function tryFrameWorksReport() {
+  // handle errors for `vue`
   if (config.vue) {
     var oldVueErrorHandler = config.vue.config.errorHandler;
 
     config.vue.config.errorHandler = function (err, vm, info) {
       console.error(err);
-      config.onReport.call(ErrorReporter, config.processStack(err));
+      config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.VUE);
       return isOBJByType(oldVueErrorHandler, 'Function') && oldVueErrorHandler(err, vm, info);
     };
+  } // handle errors for vue router
+
+
+  if (config.vueRouter) {
+    config.vueRouter.onError(function (err) {
+      console.error(err);
+      config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.VUE_ROUTER);
+    });
+  } // handle errors for axios
+
+
+  if (config.axios) {
+    // Add a request interceptor
+    config.axios.interceptors.request.use(function (config) {
+      return config;
+    }, function (err) {
+      console.error(err);
+      config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.AXIOS);
+      return Promise.reject(err);
+    }); // Add a response interceptor
+
+    config.axios.interceptors.response.use(function (resp) {
+      return resp;
+    }, function (err) {
+      console.error(err);
+      config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.AXIOS);
+      return Promise.reject(err);
+    });
   }
+}
+
+function makeReport(err, reportType) {
+  var error = err;
+
+  if (isOBJByType(err, 'String')) {
+    error = new Error(err);
+  }
+
+  config.onReport.call(ErrorReporter, config.processStack(error), reportType || REPORT_TYPE.MANUAL);
 }
 
 function setConfig(settings) {
   Object.assign(config, settings);
-  checkRuntimeReport();
-  checkResourceReport();
-  checkFrameWorksReport();
+  tryRuntimeReport();
+  tryResourceReport();
+  tryFrameWorksReport();
 }
+
+var REPORT_TYPE = {
+  RUNTIME: 'runtime',
+  RESOURCE: 'resource',
+  VUE: 'vue',
+  VUE_ROUTER: 'vue-router',
+  MANUAL: 'manual',
+  AXIOS: 'axios'
+};
+
+var noop = function noop() {};
 
 var config = {
   vConsoleSrc: '//cdn.bootcss.com/vConsole/3.3.4/vconsole.min.js',
@@ -224,8 +276,11 @@ var config = {
   resource: true,
   vue: null,
   // can be set to `Vue` class from outside
+  vueRouter: null,
+  axios: null,
   processStack: processStackMsg,
-  onReport: function onReport() {}
+  onReport: noop,
+  onResourceLoadError: noop
 };
 var vConsole = null; // VConsole instance
 
@@ -236,7 +291,8 @@ var ErrorReporter = {
   enableVConsole: enableVConsole,
   loadScript: loadScript,
   getSystemInfo: getSystemInfo,
-  getCookie: getCookie
+  getCookie: getCookie,
+  makeReport: makeReport
 };
 addProxyToConsole();
 

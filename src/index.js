@@ -81,7 +81,8 @@ function enableVConsole (show) {
 
         let len = logCache.length
         for (let i = 0; i < len; i++) {
-            // console[item.logType].apply(console, item.logs) // if use this, will make cached logs printed twice in the browser console panel
+            // if use this, will make cached logs printed twice in the browser console panel
+            // console[item.logType].apply(console, item.logs)
 
             // make cached logs printed only in the vConsolePanel
             // based on `noOrigin` property of vConsole log entry
@@ -156,9 +157,9 @@ function getCookie (name) {
     return decodeURIComponent(document.cookie.replace(regExp, '$1')) || null
 }
 
-function checkRuntimeReport () {
-    // 1. using window.onerror to collect javascript runtime error
-    // https://developer.mozilla.org/zh-CN/docs/Web/API/GlobalEventHandlers/onerror
+// Feature 1. using window.onerror to collect javascript runtime error
+// https://developer.mozilla.org/zh-CN/docs/Web/API/GlobalEventHandlers/onerror
+function tryRuntimeReport () {
     let oldOnerror = window.onerror
     window.onerror = function (message, source, lineno, colno, error) {
         let newMessage = message
@@ -174,64 +175,106 @@ function checkRuntimeReport () {
             // you can use `crossorigin attribute on <script> tag` and `cors for script file` to make error details available
             console.error('Script Error: See Browser Console for Detail')
         } else {
-            config.onReport.call(ErrorReporter, newMessage)
+            config.onReport.call(ErrorReporter, newMessage, REPORT_TYPE.RUNTIME)
         }
 
-        return isOBJByType(oldOnerror, 'Function') ? oldOnerror.apply(this, [message, source, lineno, colno, error]) : false
+        return isOBJByType(oldOnerror, 'Function')
+            ? oldOnerror.apply(this, [message, source, lineno, colno, error]) : false
     }
 }
 
-function checkResourceReport () {
-    // 2. use capture phase of window `error` event to collect resource loading errors
-    // `error` event does not bubble, so `window.onerror` cannot known resource loading errors
-    // but you can catch such errors using the capture phase of `error` event
+// Feature 2. use capture phase of window `error` event to collect resource loading errors
+// `error` event does not bubble, so `window.onerror` cannot known resource loading errors
+// but you can catch such errors using the capture phase of `error` event
+function tryResourceReport () {
     config.resource && window.addEventListener('error', function (event) {
-        if (isOBJByType(event, 'Event') &&
-            (
-                event.target instanceof HTMLScriptElement ||
-                event.target instanceof HTMLLinkElement ||
-                event.target instanceof HTMLImageElement
-            )
-        ) {
-            let message = event.type
-                ? ('--' + event.type + '--' + (event.target
-                    ? (event.target.tagName.toLowerCase() + '::' + event.target.src) : '')) : ''
-            config.onReport.call(ErrorReporter, message)
+        if (event.target && (
+            event.target instanceof HTMLScriptElement ||
+            event.target instanceof HTMLLinkElement ||
+            event.target instanceof HTMLImageElement
+        )) {
+            let message = '--' + event.type + '--' + event.target.tagName.toLowerCase() + '::' +
+                (event.target.src || event.target.href)
+            config.onResourceLoadError.call(ErrorReporter, event)
+            config.onReport.call(ErrorReporter, message, REPORT_TYPE.RESOURCE)
         }
     }, true)
 }
 
-function checkFrameWorksReport () {
-    // 3. handle errors for `vue`
+// Feature 3. handle errors for frameworks
+function tryFrameWorksReport () {
+    // handle errors for `vue`
     if (config.vue) {
         let oldVueErrorHandler = config.vue.config.errorHandler
         config.vue.config.errorHandler = function (err, vm, info) {
             console.error(err)
-            config.onReport.call(ErrorReporter, config.processStack(err))
-            return isOBJByType(oldVueErrorHandler, 'Function') && oldVueErrorHandler(err, vm, info)
+            config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.VUE)
+            return isOBJByType(oldVueErrorHandler, 'Function') &&
+                oldVueErrorHandler(err, vm, info)
         }
+    }
+    // handle errors for vue router
+    if (config.vueRouter) {
+        config.vueRouter.onError(err => {
+            console.error(err)
+            config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.VUE_ROUTER)
+        })
+    }
+
+    // handle errors for axios
+    if (config.axios) {
+        // Add a request interceptor
+        config.axios.interceptors.request.use(config => config, function (err) {
+            console.error(err)
+            config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.AXIOS)
+            return Promise.reject(err)
+        })
+
+        // Add a response interceptor
+        config.axios.interceptors.response.use(resp => resp, function (err) {
+            console.error(err)
+            config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.AXIOS)
+            return Promise.reject(err)
+        })
     }
 }
 
-function makeReport (err) {
-    config.onReport.call(ErrorReporter, config.processStack(err))
+function makeReport (err, reportType) {
+    let error = err
+    if (isOBJByType(err, 'String')) {
+        error = new Error(err)
+    }
+    config.onReport.call(ErrorReporter, config.processStack(error), reportType || REPORT_TYPE.MANUAL)
 }
 
 function setConfig (settings) {
     Object.assign(config, settings)
-    checkRuntimeReport()
-    checkResourceReport()
-    checkFrameWorksReport()
+    tryRuntimeReport()
+    tryResourceReport()
+    tryFrameWorksReport()
 }
 
+const REPORT_TYPE = {
+    RUNTIME: 'runtime',
+    RESOURCE: 'resource',
+    VUE: 'vue',
+    VUE_ROUTER: 'vue-router',
+    MANUAL: 'manual',
+    AXIOS: 'axios'
+}
+
+let noop = function () {
+}
 let config = {
     vConsoleSrc: '//cdn.bootcss.com/vConsole/3.3.4/vconsole.min.js',
     maximumStackLines: 20,
     resource: true,
     vue: null, // can be set to `Vue` class from outside
+    vueRouter: null,
+    axios: null,
     processStack: processStackMsg,
-    onReport: () => {
-    }
+    onReport: noop,
+    onResourceLoadError: noop
 }
 
 let vConsole = null // VConsole instance
