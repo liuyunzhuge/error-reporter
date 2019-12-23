@@ -40,7 +40,7 @@ function loadScript (src, callback) {
     t.parentNode.insertBefore(s, t)
 }
 
-function addProxyToConsole () {
+function addConsoleProxy () {
     const consoleMethods = ['log', 'info', 'warn', 'debug', 'error']
     consoleMethods.forEach(function (methodName) {
         let method = console[methodName]
@@ -56,10 +56,7 @@ function addProxyToConsole () {
 }
 
 function showVConsole () {
-    try {
-        vConsole && vConsole.show()
-    } catch (e) {
-    }
+    vConsole && vConsole.show()
 }
 
 function enableVConsole (show) {
@@ -208,7 +205,7 @@ function tryFrameWorksReport () {
         let oldVueErrorHandler = config.vue.config.errorHandler
         config.vue.config.errorHandler = function (err, vm, info) {
             console.error(err)
-            config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.VUE)
+            makeReport(err, REPORT_TYPE.VUE)
             return isOBJByType(oldVueErrorHandler, 'Function') &&
                 oldVueErrorHandler(err, vm, info)
         }
@@ -217,7 +214,7 @@ function tryFrameWorksReport () {
     if (config.vueRouter) {
         config.vueRouter.onError(err => {
             console.error(err)
-            config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.VUE_ROUTER)
+            makeReport(err, REPORT_TYPE.VUE_ROUTER)
         })
     }
 
@@ -226,17 +223,26 @@ function tryFrameWorksReport () {
         // Add a request interceptor
         config.axios.interceptors.request.use(config => config, function (err) {
             console.error(err)
-            config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.AXIOS)
+            makeReport(err, REPORT_TYPE.AXIOS)
             return Promise.reject(err)
         })
 
         // Add a response interceptor
         config.axios.interceptors.response.use(resp => resp, function (err) {
             console.error(err)
-            config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.AXIOS)
+            makeReport(err, REPORT_TYPE.AXIOS)
             return Promise.reject(err)
         })
     }
+}
+
+// Feature 4. handle unhandled rejection for promises
+function tryUnhandledRejectionReport () {
+    config.unhandledRejection && window.addEventListener('unhandledrejection', event => {
+        if (event.reason === undefined) return
+        let err = event.reason instanceof Error ? event.reason : String(event.reason)
+        makeReport(err, REPORT_TYPE.UNHANDLED_REJECTION)
+    })
 }
 
 function makeReport (err, reportType) {
@@ -244,7 +250,7 @@ function makeReport (err, reportType) {
     if (isOBJByType(err, 'String')) {
         error = new Error(err)
     }
-    config.onReport.call(ErrorReporter, config.processStack(error), reportType || REPORT_TYPE.MANUAL)
+    return config.onReport.call(ErrorReporter, config.processStack(error), reportType || REPORT_TYPE.MANUAL)
 }
 
 function setConfig (settings) {
@@ -252,6 +258,7 @@ function setConfig (settings) {
     tryRuntimeReport()
     tryResourceReport()
     tryFrameWorksReport()
+    tryUnhandledRejectionReport()
 }
 
 const REPORT_TYPE = {
@@ -260,7 +267,8 @@ const REPORT_TYPE = {
     VUE: 'vue',
     VUE_ROUTER: 'vue-router',
     MANUAL: 'manual',
-    AXIOS: 'axios'
+    AXIOS: 'axios',
+    UNHANDLED_REJECTION: 'unhandledrejection'
 }
 
 let noop = function () {
@@ -269,7 +277,8 @@ let config = {
     vConsoleSrc: '//cdn.bootcss.com/vConsole/3.3.4/vconsole.min.js',
     maximumStackLines: 20,
     resource: true,
-    vue: null, // can be set to `Vue` class from outside
+    unhandledRejection: true,
+    vue: null,
     vueRouter: null,
     axios: null,
     processStack: processStackMsg,
@@ -277,7 +286,7 @@ let config = {
     onResourceLoadError: noop
 }
 
-let vConsole = null // VConsole instance
+let vConsole = null
 let logCache = []
 let cacheEnabled = true
 
@@ -290,5 +299,5 @@ let ErrorReporter = {
     makeReport
 }
 
-addProxyToConsole()
+addConsoleProxy()
 export { ErrorReporter as default }
