@@ -195,12 +195,13 @@ const REPORT_TYPE = {
 ```
 将来支持的场景越多，这个地方还会增加。 另外在后面介绍的api方法中，有一个`makeReport`方法，它可以传入自定义的`reportType`：
 ```js
-function makeReport (err, reportType) {
+function makeReport (err, reportType, extraData = {}) {
     let error = err
-    if (isOBJByType(err, 'String')) {
+    if (isObjectType(err, 'String')) {
         error = new Error(err)
     }
-    config.onReport.call(ErrorReporter, config.processStack(error), reportType || REPORT_TYPE.MANUAL)
+    if (notToReport(error)) return
+    return config.onReport.call(ErrorReporter, config.processStack(error), reportType || REPORT_TYPE.MANUAL, extraData)
 }
 ```
 后端收集到错误，可根据`reportType`做相关统计和分类查询。
