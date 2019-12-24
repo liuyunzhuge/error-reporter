@@ -249,6 +249,9 @@ ErrorReporter.setConfig({
     vue: Vue,
     vueRouter: router,
     axios: axios,
+    axiosIgnore: [
+        /web-error-report/
+    ],
     onResourceLoadError (event) {
         if (event.target && event.target instanceof HTMLScriptElement) {
             if (event.target.src.indexOf('static/js') > -1) {
@@ -256,7 +259,7 @@ ErrorReporter.setConfig({
             }
         }
     },
-    onReport (message, reportType) {
+    onReport (message, reportType, extraData) {
         let accessToken = localStorage.accessToken || ''
         let clientId = localStorage.client_id || ''
 
@@ -280,7 +283,8 @@ ErrorReporter.setConfig({
             search,
             cookie,
             message,
-            reportType
+            reportType,
+            extraData: JSON.stringify(extraData)
         }
 
         // post reportData ...
