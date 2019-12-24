@@ -233,7 +233,7 @@ function tryFrameWorksReport () {
             let axiosConfig = err.config
             let reject = (err) => {
                 // set `notToReport` to prevent other report task, such as `unhandledrejection`
-                err.notToReport = true
+                err = wrapNotReport(err)
                 return Promise.reject(err)
             }
 

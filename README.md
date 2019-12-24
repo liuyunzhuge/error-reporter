@@ -188,7 +188,9 @@ const REPORT_TYPE = {
     VUE: 'vue',
     VUE_ROUTER: 'vue-router',
     MANUAL: 'manual',
-    AXIOS: 'axios'
+    AXIOS_REQUEST: 'axios-request',
+    AXIOS_RESPONSE: 'axios-response',
+    UNHANDLED_REJECTION: 'unhandledrejection'
 }
 ```
 将来支持的场景越多，这个地方还会增加。 另外在后面介绍的api方法中，有一个`makeReport`方法，它可以传入自定义的`reportType`：
