@@ -284,6 +284,14 @@ function notToReport (err) {
     return false
 }
 
+function wrapNotReport (err) {
+    if (err instanceof Error) {
+        err.notToReport = true
+    }
+
+    return err
+}
+
 function makeReport (err, reportType, extraData = {}) {
     let error = err
     if (isObjectType(err, 'String')) {
@@ -340,7 +348,8 @@ let ErrorReporter = {
     loadScript,
     getSystemInfo,
     getCookie,
-    makeReport
+    makeReport,
+    wrapNotReport
 }
 
 addConsoleProxy()
