@@ -1,5 +1,5 @@
 /* eslint-disable no-useless-escape */
-function isOBJByType(o, type) {
+function isObjectType(o, type) {
   return Object.prototype.toString.call(o) === '[object ' + (type || 'Object') + ']';
 }
 
@@ -32,7 +32,7 @@ function loadScript(src, callback) {
   s.onload = s.onreadystatechange = function () {
     if (!r && (!this.readyState || this.readyState === 'complete')) {
       r = true;
-      isOBJByType(callback, 'Function') && callback();
+      isObjectType(callback, 'Function') && callback();
     }
   };
 
@@ -40,7 +40,7 @@ function loadScript(src, callback) {
   t.parentNode.insertBefore(s, t);
 }
 
-function addProxyToConsole() {
+function addConsoleProxy() {
   var consoleMethods = ['log', 'info', 'warn', 'debug', 'error'];
   consoleMethods.forEach(function (methodName) {
     var method = console[methodName];
@@ -55,15 +55,9 @@ function addProxyToConsole() {
   });
 }
 
-function showVConsole() {
-  try {
-    vConsole && vConsole.show();
-  } catch (e) {}
-}
-
 function enableVConsole(show) {
   if (vConsole && show) {
-    return showVConsole();
+    return vConsole.show();
   }
 
   loadScript(config.vConsoleSrc, function () {
@@ -118,7 +112,7 @@ function getSystemInfo() {
   } else if (ipod) {
     system = 'iPod';
     systemVersion = 'iOS' + ipod[2].replace(/_/g, '.');
-  } // wechat client version
+  } // wechat
 
 
   var microMessenger = ua.match(/MicroMessenger\/([\d\.]+)/i);
@@ -168,6 +162,7 @@ function tryRuntimeReport() {
 
   window.onerror = function (message, source, lineno, colno, error) {
     var newMessage = message;
+    if (notToReport(error)) return;
 
     if (error && error.stack) {
       newMessage = config.processStack(error);
@@ -183,7 +178,7 @@ function tryRuntimeReport() {
       config.onReport.call(ErrorReporter, newMessage, REPORT_TYPE.RUNTIME);
     }
 
-    return isOBJByType(oldOnerror, 'Function') ? oldOnerror.apply(this, [message, source, lineno, colno, error]) : false;
+    return isObjectType(oldOnerror, 'Function') ? oldOnerror.apply(this, [message, source, lineno, colno, error]) : false;
   };
 } // Feature 2. use capture phase of window `error` event to collect resource loading errors
 // `error` event does not bubble, so `window.onerror` cannot known resource loading errors
@@ -208,8 +203,8 @@ function tryFrameWorksReport() {
 
     config.vue.config.errorHandler = function (err, vm, info) {
       console.error(err);
-      config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.VUE);
-      return isOBJByType(oldVueErrorHandler, 'Function') && oldVueErrorHandler(err, vm, info);
+      makeReport(err, REPORT_TYPE.VUE);
+      return isObjectType(oldVueErrorHandler, 'Function') && oldVueErrorHandler(err, vm, info);
     };
   } // handle errors for vue router
 
@@ -217,39 +212,105 @@ function tryFrameWorksReport() {
   if (config.vueRouter) {
     config.vueRouter.onError(function (err) {
       console.error(err);
-      config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.VUE_ROUTER);
+      makeReport(err, REPORT_TYPE.VUE_ROUTER);
     });
   } // handle errors for axios
 
 
   if (config.axios) {
-    // Add a request interceptor
+    var resolveReportConfig = function resolveReportConfig(axiosConfig) {
+      var ret = {};
+      var reportConfig = config.axiosReportConfig || ['url', 'method', 'params', 'data', 'headers'];
+      reportConfig.forEach(function (key) {
+        ret[key] = axiosConfig[key];
+      });
+      return ret;
+    };
+
+    var handleErr = function handleErr(type, err) {
+      console.error(err);
+      var axiosIgnore = config.axiosIgnore;
+      var axiosConfig = err.config;
+
+      var reject = function reject(err) {
+        // set `notToReport` to prevent other report task, such as `unhandledrejection`
+        err.notToReport = true;
+        return Promise.reject(err);
+      };
+
+      if (axiosIgnore) {
+        if (isObjectType(axiosIgnore, 'Array') && axiosIgnore.some(function (i) {
+          return new RegExp(i).test(axiosConfig.url);
+        })) {
+          return reject(err);
+        } else if (isObjectType(axiosIgnore, 'Function') && axiosIgnore(err)) {
+          return reject(err);
+        }
+      }
+
+      var reportConfig = resolveReportConfig(axiosConfig);
+      makeReport(err, type, reportConfig);
+      return reject(err);
+    };
+
     config.axios.interceptors.request.use(function (config) {
       return config;
     }, function (err) {
-      console.error(err);
-      config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.AXIOS);
-      return Promise.reject(err);
-    }); // Add a response interceptor
-
+      return handleErr(REPORT_TYPE.AXIOS_REQUEST, err);
+    });
     config.axios.interceptors.response.use(function (resp) {
       return resp;
     }, function (err) {
-      console.error(err);
-      config.onReport.call(ErrorReporter, config.processStack(err), REPORT_TYPE.AXIOS);
-      return Promise.reject(err);
+      return handleErr(REPORT_TYPE.AXIOS_RESPONSE, err);
     });
   }
+} // Feature 4. handle unhandled rejection for promises
+
+
+function tryUnhandledRejectionReport() {
+  config.unhandledRejection && window.addEventListener('unhandledrejection', function (event) {
+    if (event.reason === undefined) return;
+    var err = event.reason instanceof Error ? event.reason : String(event.reason);
+    makeReport(err, REPORT_TYPE.UNHANDLED_REJECTION);
+  });
+}
+
+function notToReport(err) {
+  if (!err) return false;
+
+  if (err instanceof Error) {
+    if (err.notToReport) {
+      return true;
+    }
+
+    if (config.notReportErrors.some(function (errClass) {
+      return err instanceof errClass;
+    })) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function wrapNotReport(err) {
+  if (err instanceof Error) {
+    err.notToReport = true;
+  }
+
+  return err;
 }
 
 function makeReport(err, reportType) {
+  var extraData = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
   var error = err;
 
-  if (isOBJByType(err, 'String')) {
+  if (isObjectType(err, 'String')) {
     error = new Error(err);
   }
 
-  config.onReport.call(ErrorReporter, config.processStack(error), reportType || REPORT_TYPE.MANUAL);
+  if (notToReport(error)) return;
+  return config.onReport.call(ErrorReporter, config.processStack(error), reportType || REPORT_TYPE.MANUAL, extraData);
 }
 
 function setConfig(settings) {
@@ -257,6 +318,7 @@ function setConfig(settings) {
   tryRuntimeReport();
   tryResourceReport();
   tryFrameWorksReport();
+  tryUnhandledRejectionReport();
 }
 
 var REPORT_TYPE = {
@@ -265,7 +327,9 @@ var REPORT_TYPE = {
   VUE: 'vue',
   VUE_ROUTER: 'vue-router',
   MANUAL: 'manual',
-  AXIOS: 'axios'
+  AXIOS_REQUEST: 'axios-request',
+  AXIOS_RESPONSE: 'axios-response',
+  UNHANDLED_REJECTION: 'unhandledrejection'
 };
 
 var noop = function noop() {};
@@ -274,16 +338,18 @@ var config = {
   vConsoleSrc: '//cdn.bootcss.com/vConsole/3.3.4/vconsole.min.js',
   maximumStackLines: 20,
   resource: true,
+  unhandledRejection: true,
   vue: null,
-  // can be set to `Vue` class from outside
   vueRouter: null,
   axios: null,
+  axiosReportConfig: null,
+  axiosIgnore: null,
+  notReportErrors: [],
   processStack: processStackMsg,
   onReport: noop,
   onResourceLoadError: noop
 };
-var vConsole = null; // VConsole instance
-
+var vConsole = null;
 var logCache = [];
 var cacheEnabled = true;
 var ErrorReporter = {
@@ -292,8 +358,9 @@ var ErrorReporter = {
   loadScript: loadScript,
   getSystemInfo: getSystemInfo,
   getCookie: getCookie,
-  makeReport: makeReport
+  makeReport: makeReport,
+  wrapNotReport: wrapNotReport
 };
-addProxyToConsole();
+addConsoleProxy();
 
 export default ErrorReporter;
