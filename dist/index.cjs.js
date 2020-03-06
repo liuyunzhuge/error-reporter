@@ -6,10 +6,14 @@ function isObjectType(o, type) {
 }
 
 function processStackMsg(error) {
-  // 1. clean line separator
+  if (!error.stack) {
+    return error.toString();
+  } // 1. clean line separator
   // 2. replace 'at' with '@' in error source like 'at window.makeError (http://localhost:8080/test.js?a=1&b=2:3:5)'
   // 3. limit maximum stack lines
   // 4. clean query string in error source like 'http://localhost:8080/test.js?a=1&b=2'
+
+
   var stack = error.stack.replace(/\n/gi, '') // 1
   .split(/\bat\b/) // 2
   .slice(0, config.maximumStackLines) // 3
@@ -236,7 +240,7 @@ function tryFrameWorksReport() {
 
       var reject = function reject(err) {
         // set `notToReport` to prevent other report task, such as `unhandledrejection`
-        err.notToReport = true;
+        err = wrapNotReport(err);
         return Promise.reject(err);
       };
 
