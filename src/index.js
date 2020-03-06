@@ -4,6 +4,9 @@ function isObjectType (o, type) {
 }
 
 function processStackMsg (error) {
+    if(!error.stack) {
+        return error.toString()
+    }
     // 1. clean line separator
     // 2. replace 'at' with '@' in error source like 'at window.makeError (http://localhost:8080/test.js?a=1&b=2:3:5)'
     // 3. limit maximum stack lines
